@@ -25,9 +25,22 @@ def backtest():
     prices = df['Close']
     returns = prices.pct_change().dropna()
     
-    # Strategy: Buy & Hold only for now
+   # Strategies
     if strategy == 'buy_hold':
         strategy_returns = returns
+    
+    elif strategy == 'momentum':
+        # Momentum: Buy if price > moving average
+        ma = prices.rolling(period).mean()
+        signals = (prices > ma).astype(int)
+        strategy_returns = returns * signals.shift(1).fillna(0)
+    
+    elif strategy == 'mean_reversion':
+        # Mean Reversion: Buy if price < moving average
+        ma = prices.rolling(period).mean()
+        signals = (prices < ma).astype(int)
+        strategy_returns = returns * signals.shift(1).fillna(0)
+    
     else:
         return jsonify({'error': 'Strategy not implemented yet'}), 400
     

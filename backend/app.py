@@ -44,15 +44,32 @@ def backtest():
     else:
         return jsonify({'error': 'Strategy not implemented yet'}), 400
     
-    # Calculate basic metrics
+    # Calculate metrics
     total_return = (1 + strategy_returns).prod() - 1
     volatility = strategy_returns.std() * np.sqrt(252)
     sharpe_ratio = (strategy_returns.mean() * 252) / (volatility + 0.0001)
     
+    # Sortino Ratio (downside deviation)
+    downside_returns = strategy_returns[strategy_returns < 0]
+    downside_std = downside_returns.std() * np.sqrt(252) if len(downside_returns) > 0 else 0.0001
+    sortino_ratio = (strategy_returns.mean() * 252) / downside_std
+    
+    # Max Drawdown
+    cumulative = (1 + strategy_returns).cumprod()
+    running_max = cumulative.expanding().max()
+    drawdown = (cumulative - running_max) / running_max
+    max_drawdown = drawdown.min()
+    
+    # Calmar Ratio
+    calmar_ratio = (strategy_returns.mean() * 252) / (abs(max_drawdown) + 0.0001)
+    
     return jsonify({
         'strategy_return': float(total_return * 100),
         'volatility': float(volatility * 100),
-        'sharpe_ratio': float(sharpe_ratio)
+        'sharpe_ratio': float(sharpe_ratio),
+        'sortino_ratio': float(sortino_ratio),
+        'max_drawdown': float(max_drawdown * 100),
+        'calmar_ratio': float(calmar_ratio)
     })
 
 if __name__ == '__main__':

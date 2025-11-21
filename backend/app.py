@@ -72,5 +72,48 @@ def backtest():
         'calmar_ratio': float(calmar_ratio)
     })
 
+@app.route('/api/portfolio', methods=['POST'])
+def portfolio():
+    """Analyse d'un portefeuille multi-actifs"""
+    data = request.json
+    assets = data.get('assets', [])  # [{'ticker': 'AAPL', 'weight': 50}, ...]
+    
+    if len(assets) < 2:
+        return jsonify({'error': 'Au moins 2 actifs requis'}), 400
+    
+    # Récupérer les données pour chaque actif
+    all_prices = {}
+    for asset in assets:
+        ticker = asset['ticker']
+        df = yf.download(ticker, period='3mo', progress=False)
+        if df.empty:
+            return jsonify({'error': f'Pas de données pour {ticker}'}), 404
+        all_prices[ticker] = df['Close']
+    
+    # Créer DataFrame aligné
+    prices_df = pd.DataFrame(all_prices).dropna()
+    
+    # Calculer les rendements
+    returns_df = prices_df.pct_change().dropna()
+    
+    # Poids normalisés
+    weights = np.array([a['weight'] / 100 for a in assets])
+    
+    # Rendement du portefeuille
+    portfolio_returns = (returns_df * weights).sum(axis=1)
+    
+    # Métriques de base
+    total_return = (1 + portfolio_returns).prod() - 1
+    volatility = portfolio_returns.std() * np.sqrt(252)
+    
+    # Valeur du portefeuille normalisée à 100
+    portfolio_value = (1 + portfolio_returns).cumprod() * 100
+    
+    return jsonify({
+        'total_return': float(total_return * 100),
+        'portfolio_volatility': float(volatility * 100),
+        'total_value': float(portfolio_value.iloc[-1])
+    })
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

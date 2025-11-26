@@ -56,12 +56,12 @@ Dashboard professionnel de quant trading avec analyse d'actifs uniques et de por
 ### Backend - Architecture Modulaire
 L'architecture backend est organisée en modules séparés pour chaque étudiant:
 
-#### **Quant B (Sacha)** - `backend/quant_B.py`
+#### **Quant A (Martin)** - `backend/quant_B.py`
 - Récupération de données Yahoo Finance
 - Backtesting de stratégies (Buy & Hold, Momentum, Mean Reversion, Bollinger)
 - Métriques de base (Sharpe, Max Drawdown)
 
-#### **Quant A (Martin)** - `backend/quant_A.py`
+#### **Quant B (Sacha)** - `backend/quant_A.py`
 - Analyse de portefeuille multi-actifs
 - Métriques avancées (Sortino, Calmar, VaR, CVaR, Alpha, Beta)
 - Matrice de corrélation
@@ -194,8 +194,8 @@ Retourne: total_value, portfolio_volatility, sharpe_ratio,
 quant-dashboard/
 ├── backend/
 │   ├── app.py                  # API Flask principale
-│   ├── quant_a.py             # Module Quant A (Sacha)
-│   ├── quant_b.py             # Module Quant B (Martin)
+│   ├── quant_a.py             # Module Quant A (Martin)
+│   ├── quant_b.py             # Module Quant B (Sacha)
 │   ├── quant_metrics.py       # Fonctions de calcul partagées
 │   └── requirements.txt       # Dépendances Python
 ├── frontend/

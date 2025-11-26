@@ -26,8 +26,6 @@ npm-debug.log*
 .env.local
 *.local
 
-# Claude Code
-.claude/
 
 # OS
 .DS_Store

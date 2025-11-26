@@ -5,8 +5,8 @@ Dashboard professionnel de quant trading avec analyse d'actifs uniques et de por
 ## Équipe
 
 **Projet réalisé par :**
-- **Sacha Guillou Keredan** - Quant B (Analyse univariée - Single Asset)
-- **Martin Partiot** - Quant A (Analyse multivariée - Portfolio)
+- **Sacha Guillou Keredan** - Quant B (Analyse multivariée - Portfolio)
+- **Martin Partiot** - Quant A (Analyse univariée - Single Asset)
 
 **Formation :** IF ESILV 2025-2026
 

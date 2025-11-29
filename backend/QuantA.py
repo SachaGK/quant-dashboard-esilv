@@ -4,7 +4,7 @@ import numpy as np
 
 
 def get_asset_data(ticker):
-
+ 
     stock = yf.Ticker(ticker)
     data = stock.history(period='3mo')
 
@@ -29,6 +29,76 @@ def get_asset_data(ticker):
     }
 
 
+def backtest_strategy(ticker, strategy='buy-hold', period=20):
+
+    stock = yf.Ticker(ticker)
+    df = stock.history(period='3mo')
+
+    if df.empty:
+        return None
+
+    prices = df['Close']
+    returns = prices.pct_change().fillna(0)
+
+    # Implémentation des stratégies
+    if strategy == 'momentum':
+        ma = prices.rolling(period).mean()
+        signals = (prices > ma).astype(int)
+        strategy_returns = returns * signals.shift(1).fillna(0)
+
+    elif strategy == 'mean-reversion':
+        ma = prices.rolling(period).mean()
+        signals = (prices < ma).astype(int)
+        strategy_returns = returns * signals.shift(1).fillna(0)
+
+    elif strategy == 'bollinger':
+        ma = prices.rolling(period).mean()
+        std = prices.rolling(period).std()
+        upper_band = ma + (2 * std)
+        lower_band = ma - (2 * std)
+
+        z_score = (prices - ma) / std
+        signals = (z_score < -0.5).astype(int)
+        strategy_returns = returns * signals.shift(1).fillna(0)
+
+    else:  # buy-hold
+        strategy_returns = returns
+
+    # Calcul des métriques
+    cumulative_returns = (1 + strategy_returns).cumprod()
+    total_return = (cumulative_returns.iloc[-1] - 1) * 100
+
+    # Sharpe Ratio
+    mean_return = strategy_returns.mean()
+    std_return = strategy_returns.std()
+    sharpe_ratio = (mean_return / std_return) * np.sqrt(252) if std_return != 0 else 0
+
+    # Max Drawdown
+    running_max = cumulative_returns.expanding().max()
+    drawdown = (cumulative_returns - running_max) / running_max
+    max_drawdown = drawdown.min() * 100
+
+    # Historique pour graphique
+    history = [
+        {
+            'date': date.strftime('%Y-%m-%d'),
+            'value': float(val * 100),
+            'price': float(prices.loc[date])
+        }
+        for date, val in cumulative_returns.items()
+    ]
+
+    return {
+        'ticker': ticker,
+        'strategy': strategy,
+        'period': period,
+        'strategy_return': float(total_return),
+        'sharpe_ratio': float(sharpe_ratio),
+        'max_drawdown': float(max_drawdown),
+        'history': history
+    }
+
+
 def calculate_simple_metrics(returns):
 
     mean_return = returns.mean() * 252 * 100  # Annualisé
@@ -48,27 +118,3 @@ def calculate_simple_metrics(returns):
         'sharpe_ratio': float(sharpe_ratio),
         'max_drawdown': float(max_drawdown)
     }
-
-
-def get_asset_statistics(ticker):
-
-    asset_data = get_asset_data(ticker)
-
-    if not asset_data:
-        return None
-
-    # Calcul des rendements pour les métriques
-    stock = yf.Ticker(ticker)
-    df = stock.history(period='3mo')
-
-    if df.empty:
-        return asset_data
-
-    prices = df['Close']
-    returns = prices.pct_change().fillna(0)
-
-    # Ajout des métriques
-    metrics = calculate_simple_metrics(returns)
-    asset_data.update(metrics)
-
-    return asset_data

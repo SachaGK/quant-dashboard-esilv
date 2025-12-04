@@ -4,14 +4,25 @@ from scipy import stats
 
 
 def calculate_var(returns, confidence_level=0.95):
+    returns_clean = _clean_returns(returns)
 
-    return np.percentile(returns, (1 - confidence_level) * 100) * 100
+    if len(returns_clean) == 0:
+        return 0.0
+
+    var = np.percentile(returns_clean, (1 - confidence_level) * 100)
+    return var * 100
 
 
 def calculate_cvar(returns, confidence_level=0.95):
+    returns_clean = _clean_returns(returns)
 
-    var_threshold = np.percentile(returns, (1 - confidence_level) * 100)
-    return returns[returns <= var_threshold].mean() * 100
+    if len(returns_clean) == 0:
+        return 0.0
+
+    var_threshold = np.percentile(returns_clean, (1 - confidence_level) * 100)
+    cvar = returns_clean[returns_clean <= var_threshold].mean()
+    return cvar * 100
+
 
 
 def calculate_sortino_ratio(returns, risk_free_rate=0.02, mar=0):

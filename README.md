@@ -40,10 +40,17 @@ Dashboard professionnel de quant trading avec analyse d'actifs uniques et de por
   - VaR, CVaR, Omega Ratio
   - Alpha, Beta, Information Ratio
   - Contribution par actif
+- **🤖 ML Prediction (BONUS):**
+  - Modele de regression lineaire pour predictions
+  - Prevision du rendement J+1
+  - Prevision cumulative sur 5 jours
+  - Intervalles de confiance
+  - Metriques de qualite du modele (R², accuracy)
 - Visualisations:
   - Evolution comparee portefeuille vs actifs
   - Graphique d'allocation (pie chart)
   - Matrice de correlation avec code couleur
+- **⏰ Auto-refresh toutes les 5 minutes**
 
 ## Stack Technique
 
@@ -65,16 +72,20 @@ L'architecture backend est organisee en modules separes pour chaque etudiant:
 - Analyse de portefeuille multi-actifs
 - Metriques avancees (Sortino, Calmar, VaR, CVaR, Alpha, Beta)
 - Matrice de correlation
+- **ML Prediction avec regression lineaire**
 
 #### **Modules partages**
 - `quant_metrics.py`: Fonctions de calcul reutilisables
+- `ml_prediction.py`: Modele ML de prediction (BONUS)
+- `daily_report.py`: Generateur de rapports quotidiens
 - `app.py`: API Flask qui agrege Quant A et Quant B
 
 #### **Technologies**
 - **Python Flask 3.0.0**
 - **yfinance 0.2.66** (donnees Yahoo Finance en temps reel)
 - **pandas 2.1.4** & **numpy 1.26.2** (calculs quantitatifs)
-- **scipy** (metriques statistiques)
+- **scipy 1.11.4** (metriques statistiques)
+- **scikit-learn 1.3.2** (machine learning predictions)
 
 ## Installation
 
@@ -169,53 +180,34 @@ Retourne: total_value, portfolio_volatility, sharpe_ratio,
 - 0.3-0.7 = Moyenne (orange)
 - <0.3 = Faible (vert)
 
-## Notes Techniques
+## Fonctionnalites Automatiques
 
-- Donnees sur 3 mois (periode='3mo' de yfinance)
-- Taux sans risque = 2% annuel
-- Tous les calculs sont bases sur 252 jours de trading par an
-- Normalisation des prix a base 100 pour comparaisons
-- Tooltips explicatifs sur toutes les metriques
+- **Auto-refresh** : Les donnees se mettent a jour toutes les 5 minutes
+- **Daily Report** : Lancez `python daily_report.py` pour voir un resume du jour
+- **ML Prediction** : Le portfolio affiche des predictions basees sur regression lineaire
 
 ## Structure du Projet
 
 ```
 quant-dashboard/
 ├── backend/
-│   ├── app.py                  # API Flask principale
-│   ├── quant_a.py             # Module Quant A (Martin)
-│   ├── quant_b.py             # Module Quant B (Sacha)
-│   ├── quant_metrics.py       # Fonctions de calcul partagees
-│   └── requirements.txt       # Dependances Python
+│   ├── app.py                  # API Flask
+│   ├── quant_a.py             # Single Asset (Martin)
+│   ├── quant_b.py             # Portfolio (Sacha)
+│   ├── quant_metrics.py       # Calculs partages
+│   ├── ml_prediction.py       # ML (BONUS)
+│   ├── daily_report.py        # Rapport quotidien
+│   └── requirements.txt
 ├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Overview.tsx       # Page d'accueil
-│   │   │   ├── SingleAsset.tsx   # Quant A Interface
-│   │   │   └── Portfolio.tsx     # Quant B Interface
-│   │   ├── components/           # Composants reutilisables
-│   │   └── App.tsx              # Application principale
-│   └── package.json
+│   └── src/
+│       ├── pages/             # Les 3 pages
+│       └── components/        # Composants UI
 └── README.md
 ```
 
 ## Design
 
-Interface professionnelle avec :
-- Theme sombre moderne (#0f1117, #1a1d24)
-- Accents violets (#667eea, #764ba2)
-- Icones SVG personnalisees
-- Tooltips contextuels
-- Graphiques interactifs Recharts
-- Layout responsive
-
-## Gestion d'Erreurs
-
-- Validation des symboles boursiers
-- Messages d'erreur explicites
-- Gestion des donnees manquantes
-- Verification des poids de portefeuille
-- Normalisation automatique disponible
+Interface simple avec theme sombre et graphiques Recharts
 
 ## Contact
 

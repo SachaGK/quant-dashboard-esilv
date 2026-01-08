@@ -7,7 +7,14 @@ from quant_metrics import (
     calculate_kurtosis, calculate_hit_ratio, calculate_win_loss_ratio,
     calculate_information_ratio, calculate_beta, calculate_alpha
 )
-from ml_prediction import predict_portfolio_returns
+
+# Import robuste pour ml_prediction
+try:
+    from ml_prediction import predict_portfolio_returns
+except ImportError:
+    print("[Quant B] Warning: ml_prediction module not found. ML predictions will be disabled.")
+    def predict_portfolio_returns(*args, **kwargs):
+        return {'error': 'ML Prediction module not available'}
 
 
 def clean_value(value):

@@ -1,3 +1,5 @@
+
+
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -7,14 +9,7 @@ from quant_metrics import (
     calculate_kurtosis, calculate_hit_ratio, calculate_win_loss_ratio,
     calculate_information_ratio, calculate_beta, calculate_alpha
 )
-
-# Import robuste pour ml_prediction
-try:
-    from ml_prediction import predict_portfolio_returns
-except ImportError:
-    print("[Quant B] Warning: ml_prediction module not found. ML predictions will be disabled.")
-    def predict_portfolio_returns(*args, **kwargs):
-        return {'error': 'ML Prediction module not available'}
+from ml_prediction import predict_portfolio_returns
 
 
 def clean_value(value):
@@ -30,31 +25,8 @@ def clean_value(value):
 
 
 def analyze_portfolio(assets, rebalance_freq='monthly'):
-    """
-    Analyse complète d'un portefeuille multi-actifs
-    
-    Args:
-        assets: liste de symboles (strings) ou liste de dicts avec ticker et weight
-        rebalance_freq: 'daily', 'weekly', 'monthly', 'quarterly', 'none'
-    
-    Returns:
-        dict avec toutes les métriques du portefeuille
-    """
-    
-    # Gestion de deux formats d'input possibles
-    if isinstance(assets, list) and len(assets) > 0:
-        if isinstance(assets[0], str):
-            # Format simple: ['AAPL', 'MSFT', 'GOOGL']
-            assets = [{'ticker': ticker, 'weight': 1.0/len(assets)} for ticker in assets]
-        elif isinstance(assets[0], dict):
-            # Format dict: [{'ticker': 'AAPL', 'weight': 0.3}, ...]
-            pass
-        else:
-            return None
-    else:
-        return None
 
-    if len(assets) < 1:
+    if len(assets) < 2:
         return None
 
     # Récupération des données
@@ -62,46 +34,34 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
     all_data = {}
 
     for asset in assets:
-        if isinstance(asset, dict):
-            ticker = asset.get('ticker')
-        else:
-            ticker = asset
-            
-        if not ticker:
-            continue
-            
+        ticker = asset['ticker']
         try:
             stock = yf.Ticker(ticker)
             df = stock.history(period='3mo')
 
-            if not df.empty and len(df) > 1:
+            if not df.empty:
                 all_prices[ticker] = df['Close']
-                weight = asset.get('weight', 1.0/len(assets)) if isinstance(asset, dict) else 1.0/len(assets)
                 all_data[ticker] = {
                     'current_price': float(df['Close'].iloc[-1]),
-                    'weight': float(weight)
+                    'weight': asset['weight']
                 }
         except Exception as e:
-            print(f"[Quant B] Error fetching {ticker}: {e}")
+            print(f"[Portfolio] Error fetching {ticker}: {e}")
             continue
 
-    if len(all_prices) < 1:
+    if len(all_prices) < 2:
         return None
 
-    # Créer DataFrame avec les prix
     prices_df = pd.DataFrame(all_prices).dropna()
-    
-    if len(prices_df) < 2:
-        return None
 
     # Calcul des rendements
     returns_df = prices_df.pct_change().dropna()
 
-    # Poids du portefeuille
-    weights = np.array([all_data[ticker]['weight'] for ticker in all_prices.keys()])
+    # Poids du portefeuille - validation
+    weights = np.array([asset['weight'] for asset in assets])
 
     if weights.sum() == 0:
-        print("[Quant B] Error: Sum of weights is zero")
+        print("[Portfolio] Error: Sum of weights is zero")
         return None
 
     # Normalisation des poids
@@ -110,13 +70,19 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
     # Rééquilibrage selon la fréquence
     if rebalance_freq == 'none':
         # Pas de rééquilibrage: les poids dérivent avec les prix
+        # Calcul "buy and hold" - investissement initial puis drift naturel
         initial_values = prices_df.iloc[0] * weights
         portfolio_values = (prices_df * weights / prices_df.iloc[0] * initial_values).sum(axis=1)
         portfolio_values = (portfolio_values / portfolio_values.iloc[0]) * 100
+
+        # Rendements calculés sur les poids qui dérivent
         portfolio_returns = (returns_df * weights).sum(axis=1)
     else:
-        # Avec rééquilibrage: poids fixes
+        # Avec rééquilibrage (monthly/quarterly): poids fixes
+        # On réajuste les poids à chaque période pour maintenir l'allocation cible
         portfolio_returns = (returns_df * weights).sum(axis=1)
+
+        # Valeur du portfolio avec rééquilibrage constant
         normalized = prices_df / prices_df.iloc[0]
         portfolio_values = (normalized * weights).sum(axis=1) * 100
 
@@ -146,7 +112,7 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
     hit_ratio = calculate_hit_ratio(portfolio_returns)
     win_loss = calculate_win_loss_ratio(portfolio_returns)
 
-    # Alpha et Beta vs SPY (benchmark)
+    # Alpha et Beta vs SPY
     try:
         spy = yf.Ticker('SPY')
         spy_df = spy.history(period='3mo')
@@ -164,28 +130,26 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
             info_ratio = calculate_information_ratio(combined['portfolio'], combined['spy'])
         else:
             beta = alpha = info_ratio = 0.0
-    except Exception as e:
-        print(f"[Quant B] Error calculating alpha/beta: {e}")
+    except:
         beta = alpha = info_ratio = 0.0
 
     # Matrice de corrélation
     correlation_matrix = returns_df.corr().to_dict()
 
     # Contribution de chaque actif
-    for ticker in all_prices.keys():
-        if ticker in prices_df.columns:
-            asset_return = ((prices_df[ticker].iloc[-1] / prices_df[ticker].iloc[0]) - 1) * 100
-            all_data[ticker]['return'] = float(asset_return)
-            all_data[ticker]['contribution'] = float(asset_return * all_data[ticker]['weight'])
+    for ticker in all_data.keys():
+        asset_return = ((prices_df[ticker].iloc[-1] / prices_df[ticker].iloc[0]) - 1) * 100
+        all_data[ticker]['return'] = float(asset_return)
+        all_data[ticker]['contribution'] = float(asset_return * all_data[ticker]['weight'] / 100)
 
-    # Historique pour graphique
+    # Historique pour graphique - normaliser tous les actifs à 100 comme le portefeuille
     normalized_prices = (prices_df / prices_df.iloc[0]) * 100
 
     history = [
         {
-            'date': str(date.date()),
+            'date': date.strftime('%Y-%m-%d'),
             'portfolio': float(portfolio_values.loc[date]),
-            **{ticker: float(normalized_prices[ticker].loc[date]) for ticker in all_prices.keys()}
+            **{ticker: float(normalized_prices[ticker].loc[date]) for ticker in all_data.keys()}
         }
         for date in portfolio_values.index
     ]
@@ -199,21 +163,19 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
             window=5
         )
 
-        if prediction_result and 'error' not in prediction_result:
+        if 'error' not in prediction_result:
             ml_prediction = {
                 'enabled': True,
-                'next_day_prediction': clean_value(prediction_result['predictions']['predictions'][0]) if prediction_result['predictions']['predictions'] else None,
+                'next_day_prediction': clean_value(prediction_result['predictions']['predictions'][0]),
                 'five_day_cumulative': clean_value(prediction_result['predictions']['cumulative_return']),
                 'model_accuracy': clean_value(prediction_result['model_metrics']['direction_accuracy']),
                 'model_r2': clean_value(prediction_result['model_metrics']['r2']),
-                'predictions_detail': [float(p) for p in prediction_result['predictions']['predictions']],
-                'confidence_lower': [float(c) for c in prediction_result['predictions']['confidence_lower']],
-                'confidence_upper': [float(c) for c in prediction_result['predictions']['confidence_upper']]
+                'predictions_detail': prediction_result['predictions']['predictions'],
+                'confidence_lower': prediction_result['predictions']['confidence_lower'],
+                'confidence_upper': prediction_result['predictions']['confidence_upper']
             }
-        else:
-            ml_prediction = {'enabled': False, 'error': 'Insufficient data'}
     except Exception as e:
-        print(f"[Quant B] ML Prediction Error: {e}")
+        print(f"[ML Prediction] Error: {e}")
         ml_prediction = {'enabled': False, 'error': str(e)}
 
     return {
@@ -237,6 +199,5 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
         'correlation_matrix': correlation_matrix,
         'assets_data': all_data,
         'history': history,
-        'ml_prediction': ml_prediction,
-        'rebalance_frequency': rebalance_freq
+        'ml_prediction': ml_prediction
     }

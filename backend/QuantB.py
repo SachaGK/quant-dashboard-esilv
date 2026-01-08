@@ -1,3 +1,5 @@
+
+
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -7,14 +9,18 @@ from quant_metrics import (
     calculate_kurtosis, calculate_hit_ratio, calculate_win_loss_ratio,
     calculate_information_ratio, calculate_beta, calculate_alpha
 )
+from ml_prediction import predict_portfolio_returns
 
 
 def clean_value(value):
-    """Nettoie les valeurs NaN/inf pour JSON"""
+    """Nettoie les valeurs NaN/inf/None pour JSON - garde les vraies valeurs"""
+    if value is None:
+        return None
     if isinstance(value, (int, float)):
         if np.isnan(value) or np.isinf(value):
-            return 0.0
-        return float(value)
+            return None
+        # Garde la valeur réelle même si c'est 0
+        return round(float(value), 4)
     return value
 
 
@@ -51,18 +57,32 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
     # Calcul des rendements
     returns_df = prices_df.pct_change().dropna()
 
-    # Poids du portefeuille
+    # Poids du portefeuille - validation
     weights = np.array([asset['weight'] for asset in assets])
+
+    if weights.sum() == 0:
+        print("[Portfolio] Error: Sum of weights is zero")
+        return None
+
+    # Normalisation des poids
     weights = weights / weights.sum()
 
-    # Rendements du portefeuille
-    portfolio_returns = (returns_df * weights).sum(axis=1)
+    # Rééquilibrage selon la fréquence
+    if rebalance_freq == 'none':
+        # Pas de rééquilibrage: les poids dérivent avec les prix
+        # Calcul "buy and hold" - investissement initial puis drift naturel
+        initial_values = prices_df.iloc[0] * weights
+        portfolio_values = (prices_df * weights / prices_df.iloc[0] * initial_values).sum(axis=1)
+        portfolio_values = (portfolio_values / portfolio_values.iloc[0]) * 100
 
-    # Rééquilibrage si nécessaire
-    if rebalance_freq != 'none':
-        normalized = prices_df / prices_df.iloc[0]
-        portfolio_values = (normalized * weights).sum(axis=1) * 100
+        # Rendements calculés sur les poids qui dérivent
+        portfolio_returns = (returns_df * weights).sum(axis=1)
     else:
+        # Avec rééquilibrage (monthly/quarterly): poids fixes
+        # On réajuste les poids à chaque période pour maintenir l'allocation cible
+        portfolio_returns = (returns_df * weights).sum(axis=1)
+
+        # Valeur du portfolio avec rééquilibrage constant
         normalized = prices_df / prices_df.iloc[0]
         portfolio_values = (normalized * weights).sum(axis=1) * 100
 
@@ -70,7 +90,9 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
     total_return = ((portfolio_values.iloc[-1] / portfolio_values.iloc[0]) - 1) * 100
     portfolio_volatility = portfolio_returns.std() * np.sqrt(252) * 100
 
-    sharpe_ratio = (portfolio_returns.mean() / portfolio_returns.std()) * np.sqrt(252) \
+    # Sharpe Ratio avec risk-free rate (2% annuel)
+    risk_free_rate = 0.02 / 252  # Taux journalier
+    sharpe_ratio = ((portfolio_returns.mean() - risk_free_rate) / portfolio_returns.std()) * np.sqrt(252) \
         if portfolio_returns.std() != 0 else 0
 
     # Max Drawdown
@@ -132,6 +154,30 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
         for date in portfolio_values.index
     ]
 
+    # ML Prediction (Bonus Feature)
+    ml_prediction = None
+    try:
+        prediction_result = predict_portfolio_returns(
+            portfolio_returns,
+            n_days=5,
+            window=5
+        )
+
+        if 'error' not in prediction_result:
+            ml_prediction = {
+                'enabled': True,
+                'next_day_prediction': clean_value(prediction_result['predictions']['predictions'][0]),
+                'five_day_cumulative': clean_value(prediction_result['predictions']['cumulative_return']),
+                'model_accuracy': clean_value(prediction_result['model_metrics']['direction_accuracy']),
+                'model_r2': clean_value(prediction_result['model_metrics']['r2']),
+                'predictions_detail': prediction_result['predictions']['predictions'],
+                'confidence_lower': prediction_result['predictions']['confidence_lower'],
+                'confidence_upper': prediction_result['predictions']['confidence_upper']
+            }
+    except Exception as e:
+        print(f"[ML Prediction] Error: {e}")
+        ml_prediction = {'enabled': False, 'error': str(e)}
+
     return {
         'total_return': clean_value(total_return),
         'total_value': clean_value(portfolio_values.iloc[-1]),
@@ -152,5 +198,6 @@ def analyze_portfolio(assets, rebalance_freq='monthly'):
         'win_loss_ratio': clean_value(win_loss),
         'correlation_matrix': correlation_matrix,
         'assets_data': all_data,
-        'history': history
+        'history': history,
+        'ml_prediction': ml_prediction
     }

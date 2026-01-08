@@ -4,25 +4,14 @@ from scipy import stats
 
 
 def calculate_var(returns, confidence_level=0.95):
-    returns_clean = _clean_returns(returns)
 
-    if len(returns_clean) == 0:
-        return 0.0
-
-    var = np.percentile(returns_clean, (1 - confidence_level) * 100)
-    return var * 100
+    return np.percentile(returns, (1 - confidence_level) * 100) * 100
 
 
 def calculate_cvar(returns, confidence_level=0.95):
-    returns_clean = _clean_returns(returns)
 
-    if len(returns_clean) == 0:
-        return 0.0
-
-    var_threshold = np.percentile(returns_clean, (1 - confidence_level) * 100)
-    cvar = returns_clean[returns_clean <= var_threshold].mean()
-    return cvar * 100
-
+    var_threshold = np.percentile(returns, (1 - confidence_level) * 100)
+    return returns[returns <= var_threshold].mean() * 100
 
 
 def calculate_sortino_ratio(returns, risk_free_rate=0.02, mar=0):
@@ -36,14 +25,10 @@ def calculate_sortino_ratio(returns, risk_free_rate=0.02, mar=0):
     daily_rf = risk_free_rate / 252
     excess_returns = returns_clean - daily_rf
 
-    # Downside deviation: ne considère que les rendements sous le seuil MAR
-    downside_returns = returns_clean - mar
-    downside_returns = downside_returns[downside_returns < 0]
-
-    if len(downside_returns) == 0:
-        return 0.0
-
-    downside_deviation = np.sqrt((downside_returns ** 2).mean())
+    # Downside deviation: racine carrée de la moyenne des rendements négatifs au carré
+    # Formule correcte: on prend tous les rendements, mais on clip à 0 pour les positifs
+    downside_values = np.minimum(returns_clean - mar, 0)
+    downside_deviation = np.sqrt(np.mean(downside_values ** 2))
 
     if downside_deviation == 0:
         return 0.0
@@ -68,7 +53,9 @@ def calculate_calmar_ratio(returns, max_drawdown):
 
     cagr = (1 + cumulative_return) ** (252 / n_days) - 1
 
-    return (cagr * 100) / abs(max_drawdown)
+    # Calmar = CAGR / |MaxDrawdown| (tous deux en décimal, puis * 100 pour %)
+    # max_drawdown est déjà en % (ex: -20), donc on divise par 100 pour cohérence
+    return (cagr * 100) / abs(max_drawdown) if abs(max_drawdown) > 0.01 else 0.0
 
 
 def calculate_omega_ratio(returns, threshold=0):

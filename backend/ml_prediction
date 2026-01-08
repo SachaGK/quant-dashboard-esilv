@@ -1,0 +1,238 @@
+"""
+ML Prediction Module for Portfolio Analysis
+Simple and robust linear regression model for portfolio return predictions
+Uses scikit-learn with rolling window approach
+"""
+
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+import warnings
+warnings.filterwarnings('ignore')
+
+
+def create_features(returns, window=5):
+    """
+    Create features from historical returns using a rolling window
+
+    Features:
+    - Lagged returns (t-1, t-2, ..., t-window)
+    - Rolling mean
+    - Rolling standard deviation
+    - Momentum (current vs window average)
+    """
+    df = pd.DataFrame({'returns': returns})
+
+    # Lagged returns
+    for i in range(1, window + 1):
+        df[f'lag_{i}'] = df['returns'].shift(i)
+
+    # Rolling statistics
+    df['rolling_mean'] = df['returns'].rolling(window).mean()
+    df['rolling_std'] = df['returns'].rolling(window).std()
+
+    # Momentum indicator
+    df['momentum'] = df['returns'] - df['rolling_mean']
+
+    # Drop NaN values created by lagging and rolling
+    df = df.dropna()
+
+    return df
+
+
+def train_prediction_model(returns, window=5):
+    """
+    Train a simple linear regression model on historical returns
+
+    Args:
+        returns: pd.Series of portfolio returns
+        window: number of lookback periods
+
+    Returns:
+        model: trained LinearRegression model
+        scaler: fitted StandardScaler
+        feature_names: list of feature column names
+        metrics: dict with training metrics
+    """
+    try:
+        # Create features
+        df = create_features(returns, window)
+
+        if len(df) < 10:  # Need minimum data
+            return None, None, None, None
+
+        # Prepare X (features) and y (target)
+        feature_cols = [col for col in df.columns if col != 'returns']
+        X = df[feature_cols].values
+        y = df['returns'].values
+
+        # Scale features for better numerical stability
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+
+        # Train model
+        model = LinearRegression()
+        model.fit(X_scaled, y)
+
+        # Calculate metrics
+        predictions = model.predict(X_scaled)
+        mse = np.mean((y - predictions) ** 2)
+        mae = np.mean(np.abs(y - predictions))
+        r2 = model.score(X_scaled, y)
+
+        # Direction accuracy (did we predict the sign correctly?)
+        direction_accuracy = np.mean((predictions > 0) == (y > 0)) * 100
+
+        metrics = {
+            'mse': float(mse),
+            'mae': float(mae),
+            'r2': float(r2),
+            'direction_accuracy': float(direction_accuracy),
+            'training_samples': len(y)
+        }
+
+        return model, scaler, feature_cols, metrics
+
+    except Exception as e:
+        print(f"Error training model: {e}")
+        return None, None, None, None
+
+
+def predict_next_returns(model, scaler, recent_returns, feature_cols, window=5, n_steps=5):
+    """
+    Predict future returns using the trained model
+
+    Args:
+        model: trained model
+        scaler: fitted scaler
+        recent_returns: recent return history (must have at least 'window' values)
+        feature_cols: list of feature names
+        window: lookback window size
+        n_steps: number of future periods to predict
+
+    Returns:
+        predictions: dict with prediction results
+    """
+    try:
+        predictions = []
+        current_returns = recent_returns.copy()
+
+        for step in range(n_steps):
+            # Create features from current data
+            df = create_features(pd.Series(current_returns), window)
+
+            if df.empty:
+                break
+
+            # Get the most recent feature row
+            X = df[feature_cols].iloc[-1:].values
+            X_scaled = scaler.transform(X)
+
+            # Predict next return
+            next_return = model.predict(X_scaled)[0]
+            predictions.append(next_return)
+
+            # Append prediction for next iteration
+            current_returns = np.append(current_returns, next_return)
+
+        # Calculate cumulative predicted returns
+        cumulative_predictions = np.cumprod(1 + np.array(predictions)) - 1
+
+        # Calculate confidence intervals basés sur l'erreur du modèle
+        # On utilise le MSE du modèle pour estimer l'incertitude, pas la variance des prédictions
+        # Note: model n'est pas disponible ici, on utilise une approche simplifiée
+        # avec l'écart-type des prédictions comme proxy (amélioration possible)
+        prediction_std = np.std(predictions) if len(predictions) > 1 else 0.01
+        confidence_multiplier = 1.96  # 95% confidence
+
+        lower_bound = np.array(predictions) - confidence_multiplier * prediction_std
+        upper_bound = np.array(predictions) + confidence_multiplier * prediction_std
+
+        return {
+            'predictions': [float(p) * 100 for p in predictions],  # Convert to percentages
+            'cumulative_return': float(cumulative_predictions[-1]) * 100,
+            'confidence_lower': [float(l) * 100 for l in lower_bound],
+            'confidence_upper': [float(u) * 100 for u in upper_bound],
+            'n_steps': n_steps
+        }
+
+    except Exception as e:
+        print(f"Error predicting: {e}")
+        return None
+
+
+def predict_portfolio_returns(portfolio_returns, n_days=5, window=5):
+    """
+    Complete pipeline: train model and predict future portfolio returns
+
+    Args:
+        portfolio_returns: pd.Series of historical portfolio returns
+        n_days: number of days to predict into the future
+        window: lookback window for features
+
+    Returns:
+        dict with predictions and model metrics
+    """
+    try:
+        # Ensure we have enough data
+        if len(portfolio_returns) < window + 10:
+            return {
+                'error': 'Insufficient data for prediction',
+                'min_required': window + 10,
+                'available': len(portfolio_returns)
+            }
+
+        # Train model
+        model, scaler, feature_cols, metrics = train_prediction_model(
+            portfolio_returns, window
+        )
+
+        if model is None:
+            return {'error': 'Failed to train prediction model'}
+
+        # Get recent returns for prediction
+        recent_returns = portfolio_returns.values[-window * 3:]  # Use 3x window for context
+
+        # Make predictions
+        predictions = predict_next_returns(
+            model, scaler, recent_returns, feature_cols, window, n_days
+        )
+
+        if predictions is None:
+            return {'error': 'Failed to generate predictions'}
+
+        # Combine results
+        result = {
+            'model_metrics': metrics,
+            'predictions': predictions,
+            'window_size': window,
+            'prediction_horizon': n_days
+        }
+
+        return result
+
+    except Exception as e:
+        print(f"Error in prediction pipeline: {e}")
+        return {'error': str(e)}
+
+
+def get_prediction_summary(prediction_result):
+    """
+    Generate a human-readable summary of predictions
+    """
+    if 'error' in prediction_result:
+        return f"Prediction unavailable: {prediction_result['error']}"
+
+    metrics = prediction_result['model_metrics']
+    preds = prediction_result['predictions']
+
+    summary = {
+        'model_accuracy': f"{metrics['direction_accuracy']:.1f}%",
+        'model_r2': f"{metrics['r2']:.3f}",
+        'expected_return': f"{preds['cumulative_return']:+.2f}%",
+        'next_period_prediction': f"{preds['predictions'][0]:+.2f}%",
+        'prediction_range': f"[{min(preds['predictions']):.2f}%, {max(preds['predictions']):.2f}%]"
+    }
+
+    return summary

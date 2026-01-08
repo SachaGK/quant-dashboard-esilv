@@ -1,110 +1,190 @@
+import numpy as np
+import pandas as pd
+from scipy import stats
 
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-import quant_a
-import quant_b
+def calculate_var(returns, confidence_level=0.95):
 
-app = Flask(__name__)
-CORS(app)
+    return np.percentile(returns, (1 - confidence_level) * 100) * 100
 
 
-@app.route('/api/health')
-def health():
-    """Health check de l'API"""
-    return jsonify({'status': 'online', 'message': 'Backend Python OK - Yahoo Finance LIVE'})
+def calculate_cvar(returns, confidence_level=0.95):
 
-@app.route('/api/asset/<ticker>')
-def get_asset_data(ticker):
-    """Récupère les données d'un actif unique"""
-    try:
-        print(f"[Quant A] Fetching data for {ticker}...")
-
-        result = quant_a.get_asset_data(ticker)
-
-        if result is None:
-            print(f"[Quant A] No data from Yahoo Finance for {ticker}")
-            return jsonify({
-                'error': f'Impossible de récupérer les données pour {ticker}. Vérifiez le symbole.'
-            }), 404
-
-        print(f"[Quant A] Success: {len(result['history'])} data points retrieved")
-        return jsonify(result)
-
-    except Exception as e:
-        print(f"[Quant A] Error: {e}")
-        return jsonify({'error': f'Erreur lors de la récupération des données: {str(e)}'}), 500
+    var_threshold = np.percentile(returns, (1 - confidence_level) * 100)
+    return returns[returns <= var_threshold].mean() * 100
 
 
-@app.route('/api/backtest', methods=['POST'])
-def backtest():
-    """Effectue un backtest de stratégie sur un actif unique"""
-    try:
-        data = request.get_json()
-        ticker = data.get('ticker')
-        strategy = data.get('strategy', 'buy-hold')
-        period = data.get('period', 20)
+def calculate_sortino_ratio(returns, risk_free_rate=0.02, mar=0):
 
-        print(f"[Quant A] Running {strategy} strategy on {ticker} with period={period}...")
+    returns_clean = returns.dropna()
 
-        result = quant_a.backtest_strategy(ticker, strategy, period)
+    if len(returns_clean) == 0:
+        return 0.0
 
-        if result is None:
-            print(f"[Quant A] No data from Yahoo Finance for {ticker}")
-            return jsonify({'error': f'Impossible de récupérer les données pour {ticker}'}), 404
+    # Calcul de l'excès de rendement
+    daily_rf = risk_free_rate / 252
+    excess_returns = returns_clean - daily_rf
 
-        print(f"[Quant A] Complete: Return={result['strategy_return']:.2f}%, " +
-              f"Sharpe={result['sharpe_ratio']:.2f}, MaxDD={result['max_drawdown']:.2f}%")
+    # Downside deviation: racine carrée de la moyenne des rendements négatifs au carré
+    # Formule correcte: on prend tous les rendements, mais on clip à 0 pour les positifs
+    downside_values = np.minimum(returns_clean - mar, 0)
+    downside_deviation = np.sqrt(np.mean(downside_values ** 2))
 
-        return jsonify(result)
+    if downside_deviation == 0:
+        return 0.0
 
-    except Exception as e:
-        print(f"[Quant A] Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Erreur lors du backtest: {str(e)}'}), 500
+    return (excess_returns.mean() / downside_deviation) * np.sqrt(252)
 
 
-# ============================================================================
-# QUANT B - PORTFOLIO ANALYSIS (Martin Partiot)
-# ============================================================================
+def calculate_calmar_ratio(returns, max_drawdown):
 
-@app.route('/api/portfolio', methods=['POST'])
-def analyze_portfolio():
-    """Analyse complète d'un portefeuille multi-actifs"""
-    try:
-        data = request.get_json()
-        assets = data.get('assets', [])
-        rebalance_freq = data.get('rebalance_freq', 'monthly')
+    returns_clean = returns.dropna()
 
-        print(f"[Quant B] Analyzing portfolio with {len(assets)} assets, rebalance={rebalance_freq}")
+    if len(returns_clean) == 0 or max_drawdown == 0:
+        return 0.0
 
-        result = quant_b.analyze_portfolio(assets, rebalance_freq)
+    # Calcul du rendement total composé
+    cumulative_return = (1 + returns_clean).prod() - 1
 
-        if result is None:
-            return jsonify({'error': 'Données insuffisantes pour analyser le portefeuille'}), 400
+    # Annualisation du rendement (CAGR)
+    n_days = len(returns_clean)
+    if n_days == 0:
+        return 0.0
 
-        print(f"[Quant B] Complete: Return={result['total_return']:.2f}%, " +
-              f"Vol={result['portfolio_volatility']:.2f}%, Sharpe={result['sharpe_ratio']:.2f}")
+    cagr = (1 + cumulative_return) ** (252 / n_days) - 1
 
-        return jsonify(result)
-
-    except Exception as e:
-        print(f"[Quant B] Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Erreur lors de l\'analyse du portefeuille: {str(e)}'}), 500
+    # Calmar = CAGR / |MaxDrawdown| (tous deux en décimal, puis * 100 pour %)
+    # max_drawdown est déjà en % (ex: -20), donc on divise par 100 pour cohérence
+    return (cagr * 100) / abs(max_drawdown) if abs(max_drawdown) > 0.01 else 0.0
 
 
-if __name__ == '__main__':
-    print("\n" + "="*80)
-    print("QUANT DASHBOARD - Backend API")
-    print("="*80)
-    print("Quant A (Single Asset): Sacha Guillou Keredan")
-    print("Quant B (Portfolio): Martin Partiot")
-    print("Formation: IF ESILV 2025-2026")
-    print("="*80 + "\n")
-    print("[Backend] Python Flask API starting...")
-    print("[Backend] Using Yahoo Finance LIVE data only\n")
+def calculate_omega_ratio(returns, threshold=0):
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    gains = returns[returns > threshold] - threshold
+    losses = threshold - returns[returns < threshold]
+
+    if losses.sum() == 0:
+        return float('inf') if gains.sum() > 0 else 0
+
+    return gains.sum() / losses.sum()
+
+
+def calculate_beta(asset_returns, market_returns):
+
+    # Aligner les deux séries
+    combined = pd.DataFrame({
+        'asset': asset_returns,
+        'market': market_returns
+    }).dropna()
+
+    if len(combined) < 2:
+        return 1.0
+
+    covariance = combined['asset'].cov(combined['market'])
+    market_variance = combined['market'].var()
+
+    if market_variance == 0:
+        return 1.0
+
+    return covariance / market_variance
+
+
+def calculate_alpha(asset_returns, market_returns, risk_free_rate=0.02):
+
+    asset_clean = asset_returns.dropna()
+    market_clean = market_returns.dropna()
+
+    if len(asset_clean) < 2 or len(market_clean) < 2:
+        return 0.0
+
+    beta = calculate_beta(asset_returns, market_returns)
+
+    # Calcul des rendements annualisés
+    asset_cumulative = (1 + asset_clean).prod() - 1
+    market_cumulative = (1 + market_clean).prod() - 1
+
+    n_days_asset = len(asset_clean)
+    n_days_market = len(market_clean)
+
+    asset_return_annual = (1 + asset_cumulative) ** (252 / n_days_asset) - 1
+    market_return_annual = (1 + market_cumulative) ** (252 / n_days_market) - 1
+
+    # Rendement attendu selon le CAPM
+    expected_return = risk_free_rate + beta * (market_return_annual - risk_free_rate)
+
+    # Alpha = Rendement réel - Rendement attendu
+    alpha = asset_return_annual - expected_return
+
+    return alpha * 100
+
+
+def calculate_information_ratio(asset_returns, benchmark_returns):
+
+    # Reset index pour aligner par position si les dates ne matchent pas
+    asset_vals = asset_returns.reset_index(drop=True)
+    benchmark_vals = benchmark_returns.reset_index(drop=True)
+
+    # Prendre la longueur minimale
+    min_len = min(len(asset_vals), len(benchmark_vals))
+    if min_len < 2:
+        return 0
+
+    asset_vals = asset_vals[:min_len]
+    benchmark_vals = benchmark_vals[:min_len]
+
+    excess_returns = asset_vals - benchmark_vals
+    tracking_error = excess_returns.std()
+
+    if tracking_error == 0:
+        return 0
+
+    return (excess_returns.mean() / tracking_error) * np.sqrt(252)
+
+
+def calculate_skewness(returns):
+
+    return stats.skew(returns.dropna())
+
+
+def calculate_kurtosis(returns):
+ 
+    return stats.kurtosis(returns.dropna())
+
+
+def calculate_tail_ratio(returns):
+
+    right_tail = abs(np.percentile(returns, 95))
+    left_tail = abs(np.percentile(returns, 5))
+
+    if left_tail == 0:
+        return float('inf') if right_tail > 0 else 1.0
+
+    return right_tail / left_tail
+
+
+def calculate_hit_ratio(returns):
+
+    winning_periods = (returns > 0).sum()
+    total_periods = len(returns)
+
+    if total_periods == 0:
+        return 0
+
+    return (winning_periods / total_periods) * 100
+
+
+def calculate_win_loss_ratio(returns):
+
+    wins = returns[returns > 0]
+    losses = returns[returns < 0]
+
+    if len(losses) == 0:
+        return float('inf') if len(wins) > 0 else 0
+
+    avg_win = wins.mean() if len(wins) > 0 else 0
+    avg_loss = abs(losses.mean())
+
+    if avg_loss == 0:
+        return float('inf') if avg_win > 0 else 0
+
+    return avg_win / avg_loss

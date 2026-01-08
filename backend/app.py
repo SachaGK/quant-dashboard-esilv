@@ -3,8 +3,8 @@ import json
 from datetime import datetime
 
 # Import des modules Quant A et Quant B
-import quant_a
-import quant_b
+import QuantA as quant_a
+import QuantB as quant_b
 
 # Configuration Streamlit
 st.set_page_config(

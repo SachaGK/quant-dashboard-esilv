@@ -1,357 +1,121 @@
-import streamlit as st
-import json
-from datetime import datetime
-import sys
-import os
 
-# Ajoute le répertoire courant au chemin Python pour les imports locaux
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import des modules Quant A et Quant B avec gestion d'erreur
-try:
-    import QuantA as quant_a
-except ImportError as e:
-    st.error(f"❌ Erreur d'import QuantA: {e}")
-    quant_a = None
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
-try:
-    import QuantB as quant_b
-except ImportError as e:
-    st.error(f"❌ Erreur d'import QuantB: {e}")
-    quant_b = None
+# Import des modules Quant A et Quant B
+import quant_a
+import quant_b
 
-# Configuration Streamlit
-st.set_page_config(
-    page_title="Quant Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+app = Flask(__name__)
+CORS(app)
 
-st.markdown("""
-<style>
-    .header {
-        text-align: center;
-        padding: 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
-        color: white;
-        margin-bottom: 30px;
-    }
-    .header h1 {
-        margin: 0;
-        font-size: 2.5em;
-    }
-    .section-header {
-        font-size: 1.8em;
-        margin-top: 30px;
-        margin-bottom: 20px;
-        border-bottom: 3px solid #667eea;
-        padding-bottom: 10px;
-    }
-</style>
-""", unsafe_allow_html=True)
 
-# ============================================================================
-# HEADER
-# ============================================================================
-
-st.markdown("""
-<div class="header">
-    <h1>📊 Quant Dashboard</h1>
-    <p>Single Asset & Portfolio Analysis</p>
-    <p style="font-size: 0.9em; margin-top: 10px;">
-        <strong>Quant A (Single Asset):</strong> Martin Partiot | 
-        <strong>Quant B (Portfolio):</strong> Sacha Guillou Keredan<br>
-        Formation: IF ESILV 2025-2026 | Data: Yahoo Finance LIVE
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================================================
-# NAVIGATION
-# ============================================================================
-
-tab1, tab2 = st.tabs(["📈 Single Asset Analysis", "💼 Portfolio Analysis"])
-
-# ============================================================================
-# TAB 1 - QUANT A (SINGLE ASSET ANALYSIS)
-# ============================================================================
-
-with tab1:
-    st.markdown('<div class="section-header">Single Asset Analysis (Quant A)</div>', unsafe_allow_html=True)
-    
-    if quant_a is None:
-        st.error("❌ Module Quant A non disponible")
-    else:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            ticker = st.text_input(
-                "Asset Ticker",
-                value="ENGI",
-                placeholder="e.g., AAPL, EUR=X, GC=F",
-                help="Symbole de l'actif (Yahoo Finance format)"
-            )
-        
-        with col2:
-            fetch_button = st.button("🔄 Fetch Data", key="fetch_asset")
-        
-        if fetch_button:
-            if ticker:
-                with st.spinner(f"Fetching data for {ticker}..."):
-                    try:
-                        print(f"[Quant A] Fetching data for {ticker}...")
-                        
-                        result = quant_a.get_asset_data(ticker)
-                        
-                        if result is None:
-                            st.error(f"❌ No data from Yahoo Finance for {ticker}. Vérifiez le symbole.")
-                            print(f"[Quant A] No data from Yahoo Finance for {ticker}")
-                        else:
-                            st.session_state.asset_data = result
-                            st.success(f"✅ Retrieved {len(result.get('history', []))} data points for {ticker}")
-                            print(f"[Quant A] Success: {len(result.get('history', []))} data points retrieved")
-                    
-                    except Exception as e:
-                        st.error(f"❌ Erreur lors de la récupération des données: {str(e)}")
-                        print(f"[Quant A] Error: {e}")
-            else:
-                st.warning("⚠️ Please enter a ticker")
-        
-        # Display asset data if available
-        if 'asset_data' in st.session_state:
-            data = st.session_state.asset_data
-            
-            st.markdown("### Current Price & Metrics")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                current_price = data.get('current_price', 'N/A')
-                if isinstance(current_price, (int, float)):
-                    st.metric("Current Price", f"${current_price:.2f}")
-                else:
-                    st.metric("Current Price", current_price)
-            
-            with col2:
-                change = data.get('change_percent', 'N/A')
-                if isinstance(change, (int, float)):
-                    st.metric("Change %", f"{change:.2f}%")
-                else:
-                    st.metric("Change %", change)
-            
-            with col3:
-                volatility = data.get('volatility', 'N/A')
-                if isinstance(volatility, (int, float)):
-                    st.metric("Volatility", f"{volatility:.4f}")
-                else:
-                    st.metric("Volatility", volatility)
-            
-            with col4:
-                high_52w = data.get('52w_high', 'N/A')
-                if isinstance(high_52w, (int, float)):
-                    st.metric("52W High", f"${high_52w:.2f}")
-                else:
-                    st.metric("52W High", high_52w)
-        
-        # Backtest Section
-        st.markdown("### Backtesting Strategy")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            strategy = st.selectbox(
-                "Strategy",
-                ["buy-hold", "momentum", "mean-reversion", "rsi"],
-                help="Stratégie de backtesting"
-            )
-        
-        with col2:
-            period = st.slider(
-                "Period (days)",
-                min_value=5,
-                max_value=250,
-                value=20,
-                step=5,
-                help="Période de la stratégie"
-            )
-        
-        with col3:
-            backtest_button = st.button("▶️ Run Backtest", key="backtest")
-        
-        if backtest_button:
-            if 'asset_data' in st.session_state:
-                with st.spinner(f"Running {strategy} backtest..."):
-                    try:
-                        ticker = st.session_state.asset_data.get('ticker', 'UNKNOWN')
-                        print(f"[Quant A] Running {strategy} strategy on {ticker} with period={period}...")
-                        
-                        result = quant_a.backtest_strategy(ticker, strategy, period)
-                        
-                        if result is None:
-                            st.error(f"❌ No data for {ticker}")
-                            print(f"[Quant A] No data from Yahoo Finance for {ticker}")
-                        else:
-                            st.session_state.backtest_result = result
-                            st.success(f"✅ Backtest completed")
-                            print(f"[Quant A] Complete: Return={result.get('strategy_return', 0):.2f}%, " +
-                                  f"Sharpe={result.get('sharpe_ratio', 0):.2f}, MaxDD={result.get('max_drawdown', 0):.2f}%")
-                    
-                    except Exception as e:
-                        st.error(f"❌ Erreur lors du backtest: {str(e)}")
-                        print(f"[Quant A] Error: {e}")
-                        import traceback
-                        traceback.print_exc()
-            else:
-                st.warning("⚠️ Fetch asset data first")
-        
-        # Display backtest results
-        if 'backtest_result' in st.session_state:
-            result = st.session_state.backtest_result
-            
-            st.markdown("### Backtest Results")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric(
-                    "Strategy Return",
-                    f"{result.get('strategy_return', 0):.2f}%"
-                )
-            with col2:
-                st.metric(
-                    "Sharpe Ratio",
-                    f"{result.get('sharpe_ratio', 0):.2f}"
-                )
-            with col3:
-                st.metric(
-                    "Max Drawdown",
-                    f"{result.get('max_drawdown', 0):.2f}%"
-                )
-            with col4:
-                win_rate = result.get('win_rate', 'N/A')
-                if isinstance(win_rate, (int, float)):
-                    st.metric("Win Rate", f"{win_rate:.2f}%")
-                else:
-                    st.metric("Win Rate", win_rate)
-            
-            # Display strategy details if available
-            if 'strategy_details' in result:
-                st.markdown("### Strategy Details")
-                st.json(result['strategy_details'])
+@app.route('/api/health')
+def health():
+    """Health check de l'API"""
+    return jsonify({'status': 'online', 'message': 'Backend Python OK - Yahoo Finance LIVE'})
 
 
 # ============================================================================
-# TAB 2 - QUANT B (PORTFOLIO ANALYSIS)
+# QUANT A - SINGLE ASSET ANALYSIS (Martin Partiot)
 # ============================================================================
 
-with tab2:
-    st.markdown('<div class="section-header">Portfolio Analysis (Quant B)</div>', unsafe_allow_html=True)
-    
-    if quant_b is None:
-        st.error("❌ Module Quant B non disponible")
-    else:
-        st.markdown("### Portfolio Configuration")
-        
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            assets_input = st.text_area(
-                "Assets (comma-separated)",
-                value="AAPL, MSFT, GOOGL",
-                placeholder="e.g., AAPL, MSFT, GOOGL, EUR=X",
-                help="Liste des actifs séparés par des virgules"
-            )
-        
-        with col2:
-            rebalance_freq = st.selectbox(
-                "Rebalance Frequency",
-                ["daily", "weekly", "monthly", "quarterly"],
-                index=2,
-                help="Fréquence de rééquilibrage du portefeuille"
-            )
-        
-        analyze_button = st.button("📊 Analyze Portfolio", key="analyze_portfolio")
-        
-        if analyze_button:
-            if assets_input.strip():
-                assets = [a.strip().upper() for a in assets_input.split(',')]
-                
-                with st.spinner(f"Analyzing portfolio with {len(assets)} assets..."):
-                    try:
-                        print(f"[Quant B] Analyzing portfolio with {len(assets)} assets, rebalance={rebalance_freq}")
-                        
-                        result = quant_b.analyze_portfolio(assets, rebalance_freq)
-                        
-                        if result is None:
-                            st.error("❌ Données insuffisantes pour analyser le portefeuille")
-                            print("[Quant B] No data for portfolio analysis")
-                        else:
-                            st.session_state.portfolio_result = result
-                            st.success("✅ Portfolio analysis completed")
-                            print(f"[Quant B] Complete: Return={result.get('total_return', 0):.2f}%, " +
-                                  f"Vol={result.get('portfolio_volatility', 0):.2f}%, Sharpe={result.get('sharpe_ratio', 0):.2f}")
-                    
-                    except Exception as e:
-                        st.error(f"❌ Erreur lors de l'analyse du portefeuille: {str(e)}")
-                        print(f"[Quant B] Error: {e}")
-                        import traceback
-                        traceback.print_exc()
-            else:
-                st.warning("⚠️ Please enter at least one asset")
-        
-        # Display portfolio results
-        if 'portfolio_result' in st.session_state:
-            result = st.session_state.portfolio_result
-            
-            st.markdown("### Portfolio Performance Metrics")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric(
-                    "Total Return",
-                    f"{result.get('total_return', 0):.2f}%"
-                )
-            with col2:
-                st.metric(
-                    "Portfolio Volatility",
-                    f"{result.get('portfolio_volatility', 0):.2f}%"
-                )
-            with col3:
-                st.metric(
-                    "Sharpe Ratio",
-                    f"{result.get('sharpe_ratio', 0):.2f}"
-                )
-            with col4:
-                max_dd = result.get('max_drawdown', 'N/A')
-                if isinstance(max_dd, (int, float)):
-                    st.metric("Max Drawdown", f"{max_dd:.2f}%")
-                else:
-                    st.metric("Max Drawdown", max_dd)
-            
-            # Correlation matrix if available
-            if 'correlation_matrix' in result:
-                st.markdown("### Correlation Matrix")
-                st.dataframe(result['correlation_matrix'], use_container_width=True)
-            
-            # Asset breakdown if available
-            if 'asset_weights' in result:
-                st.markdown("### Asset Weights")
-                st.bar_chart(result['asset_weights'])
-            
-            # Portfolio details
-            if 'portfolio_details' in result:
-                st.markdown("### Portfolio Details")
-                st.json(result['portfolio_details'])
+@app.route('/api/asset/<ticker>')
+def get_asset_data(ticker):
+    """Récupère les données d'un actif unique"""
+    try:
+        print(f"[Quant A] Fetching data for {ticker}...")
+
+        result = quant_a.get_asset_data(ticker)
+
+        if result is None:
+            print(f"[Quant A] No data from Yahoo Finance for {ticker}")
+            return jsonify({
+                'error': f'Impossible de récupérer les données pour {ticker}. Vérifiez le symbole.'
+            }), 404
+
+        print(f"[Quant A] Success: {len(result['history'])} data points retrieved")
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"[Quant A] Error: {e}")
+        return jsonify({'error': f'Erreur lors de la récupération des données: {str(e)}'}), 500
+
+
+@app.route('/api/backtest', methods=['POST'])
+def backtest():
+    """Effectue un backtest de stratégie sur un actif unique"""
+    try:
+        data = request.get_json()
+        ticker = data.get('ticker')
+        strategy = data.get('strategy', 'buy-hold')
+        period = data.get('period', 20)
+
+        print(f"[Quant A] Running {strategy} strategy on {ticker} with period={period}...")
+
+        result = quant_a.backtest_strategy(ticker, strategy, period)
+
+        if result is None:
+            print(f"[Quant A] No data from Yahoo Finance for {ticker}")
+            return jsonify({'error': f'Impossible de récupérer les données pour {ticker}'}), 404
+
+        print(f"[Quant A] Complete: Return={result['strategy_return']:.2f}%, " +
+              f"Sharpe={result['sharpe_ratio']:.2f}, MaxDD={result['max_drawdown']:.2f}%")
+
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"[Quant A] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Erreur lors du backtest: {str(e)}'}), 500
 
 
 # ============================================================================
-# FOOTER / INFO
+# QUANT B - PORTFOLIO ANALYSIS (Sacha Guillou Keredan)
 # ============================================================================
 
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #888; font-size: 0.9em; padding: 20px;">
-    <p>🔗 Data: Yahoo Finance | 📊 Analysis: Python | 🎨 UI: Streamlit</p>
-    <p>Last updated: {}</p>
-</div>
-""".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), unsafe_allow_html=True)
+@app.route('/api/portfolio', methods=['POST'])
+def analyze_portfolio():
+    """Analyse complète d'un portefeuille multi-actifs"""
+    try:
+        data = request.get_json()
+        assets = data.get('assets', [])
+        rebalance_freq = data.get('rebalance_freq', 'monthly')
+
+        print(f"[Quant B] Analyzing portfolio with {len(assets)} assets, rebalance={rebalance_freq}")
+
+        result = quant_b.analyze_portfolio(assets, rebalance_freq)
+
+        if result is None:
+            return jsonify({'error': 'Données insuffisantes pour analyser le portefeuille'}), 400
+
+        print(f"[Quant B] Complete: Return={result['total_return']:.2f}%, " +
+              f"Vol={result['portfolio_volatility']:.2f}%, Sharpe={result['sharpe_ratio']:.2f}")
+
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"[Quant B] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Erreur lors de l\'analyse du portefeuille: {str(e)}'}), 500
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+if __name__ == '__main__':
+    print("\n" + "="*80)
+    print("QUANT DASHBOARD - Backend API")
+    print("="*80)
+    print("Quant A (Single Asset): Martin Partiot")
+    print("Quant B (Portfolio): Sacha Guillou Keredan")
+    print("Formation: IF ESILV 2025-2026")
+    print("="*80 + "\n")
+    print("[Backend] Python Flask API starting...")
+    print("[Backend] Using Yahoo Finance LIVE data only\n")
+
+    app.run(debug=True, host='0.0.0.0', port=5000)

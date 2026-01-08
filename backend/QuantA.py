@@ -167,7 +167,7 @@ def backtest_strategy(ticker, strategy='buy-hold', period=20):
 def calculate_simple_metrics(returns):
 
     mean_return = returns.mean() * 252 * 100  # Annualisé en %
-    volatility = returns.std() * np.sqrt(252) * 100  # Annualisée en %
+    volatility = returns.std() * np.sqrt(252) * 100  # Annualisée en%
 
     # Sharpe Ratio avec risk-free rate
     risk_free_rate = 0.02 / 252  # Taux journalier (2% annuel)

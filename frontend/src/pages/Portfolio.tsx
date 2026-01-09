@@ -9,6 +9,7 @@ interface Asset {
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function Portfolio() {
   const [assets, setAssets] = useState<Asset[]>([
@@ -50,7 +51,7 @@ export default function Portfolio() {
     normalizeWeights();
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/portfolio', {
+      const response = await fetch(`${API_URL}/portfolio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -303,9 +304,7 @@ export default function Portfolio() {
                     <YAxis stroke="#52525b" fontSize={11} />
                     <ChartTooltip contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', fontSize: '12px' }} />
                     <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    {/* Ligne du Portfolio en gras et bien visible */}
                     <Line type="monotone" dataKey="portfolio" stroke="#fafafa" strokeWidth={3.5} dot={false} name="Portfolio" />
-                    {/* Actifs individuels en lignes fines et semi-transparentes */}
                     {assets.map((asset, index) => (
                       <Line key={asset.ticker} type="monotone" dataKey={asset.ticker} stroke={COLORS[index % COLORS.length]} strokeWidth={1.5} dot={false} name={asset.ticker} opacity={0.5} />
                     ))}
@@ -338,28 +337,10 @@ export default function Portfolio() {
                     <Tooltip text="Machine learning prediction using historical returns with rolling window approach" />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-                    <SmallMetric
-                      label="Next Day"
-                      value={`${portfolioData.ml_prediction.next_day_prediction >= 0 ? '+' : ''}${portfolioData.ml_prediction.next_day_prediction?.toFixed(2)}%`}
-                      tooltip="Predicted return for next trading day"
-                    />
-                    <SmallMetric
-                      label="5-Day Forecast"
-                      value={`${portfolioData.ml_prediction.five_day_cumulative >= 0 ? '+' : ''}${portfolioData.ml_prediction.five_day_cumulative?.toFixed(2)}%`}
-                      tooltip="Cumulative predicted return over 5 days"
-                    />
-                    <SmallMetric
-                      label="Model Accuracy"
-                      value={`${portfolioData.ml_prediction.model_accuracy?.toFixed(1)}%`}
-                      status={portfolioData.ml_prediction.model_accuracy > 60 ? 'good' : portfolioData.ml_prediction.model_accuracy > 50 ? 'warn' : 'bad'}
-                      tooltip="Direction prediction accuracy on training data"
-                    />
-                    <SmallMetric
-                      label="Model R²"
-                      value={portfolioData.ml_prediction.model_r2?.toFixed(3)}
-                      status={portfolioData.ml_prediction.model_r2 > 0.3 ? 'good' : portfolioData.ml_prediction.model_r2 > 0.1 ? 'warn' : 'bad'}
-                      tooltip="Model fit quality (0-1, higher is better)"
-                    />
+                    <SmallMetric label="Next Day" value={`${portfolioData.ml_prediction.next_day_prediction >= 0 ? '+' : ''}${portfolioData.ml_prediction.next_day_prediction?.toFixed(2)}%`} tooltip="Predicted return for next trading day" />
+                    <SmallMetric label="5-Day Forecast" value={`${portfolioData.ml_prediction.five_day_cumulative >= 0 ? '+' : ''}${portfolioData.ml_prediction.five_day_cumulative?.toFixed(2)}%`} tooltip="Cumulative predicted return over 5 days" />
+                    <SmallMetric label="Model Accuracy" value={`${portfolioData.ml_prediction.model_accuracy?.toFixed(1)}%`} status={portfolioData.ml_prediction.model_accuracy > 60 ? 'good' : portfolioData.ml_prediction.model_accuracy > 50 ? 'warn' : 'bad'} tooltip="Direction prediction accuracy on training data" />
+                    <SmallMetric label="Model R²" value={portfolioData.ml_prediction.model_r2?.toFixed(3)} status={portfolioData.ml_prediction.model_r2 > 0.3 ? 'good' : portfolioData.ml_prediction.model_r2 > 0.1 ? 'warn' : 'bad'} tooltip="Model fit quality (0-1, higher is better)" />
                   </div>
                   <div style={{ marginTop: '12px', padding: '10px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', fontSize: '11px', color: '#a1a1aa' }}>
                     Note: Predictions are based on historical patterns and should not be the sole basis for investment decisions
